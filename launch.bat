@@ -27,6 +27,7 @@ echo  [OK] Found %PYVER%
 if not exist ".venv\" (
     echo.
     echo  [SETUP] Creating virtual environment...
+    echo please wait...
     python -m venv .venv
     if errorlevel 1 (
         echo  [ERROR] Failed to create virtual environment.
