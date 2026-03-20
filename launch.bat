@@ -25,7 +25,7 @@ if errorlevel 1 (
         exit /b 1
     )
 
-    echo  [INFO] Installing Python silently...
+    echo  [INFO] Installing Python silently...please wait...
 
     :: /quiet        = no UI
     :: InstallAllUsers=0 = current user only (no admin needed)
