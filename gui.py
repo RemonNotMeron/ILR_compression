@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-gui.py - PDF Compressor GUI
+gui.py - PDF Compressor GUI with drag-and-drop support.
+Requires: pip install pikepdf Pillow tkinterdnd2
 """
 import os, sys, threading, tkinter as tk
 from tkinter import filedialog, ttk
@@ -14,36 +15,38 @@ except ImportError:
     mb.showerror("Missing file", "compress_pdf.py must be in the same folder as gui.py.")
     sys.exit(1)
 
+try:
+    from tkinterdnd2 import DND_FILES, TkinterDnD
+    HAS_DND = True
+except ImportError:
+    HAS_DND = False
+
 # ── Palette ───────────────────────────────────────────────────────────────────
-BG          = "#f0f2f8"
-WHITE       = "#ffffff"
-BORDER      = "#dde1f0"
-
-# Section accent strips
-SEC_FILES   = "#eef3ff"   # soft blue tint
-SEC_OUT     = "#f0faf4"   # soft green tint
-SEC_LOG     = "#fdf8f0"   # soft amber tint
-
+BG           = "#f0f2f8"
+WHITE        = "#ffffff"
+BORDER       = "#dde1f0"
+SEC_FILES    = "#eef3ff"
+SEC_OUT      = "#f0faf4"
+SEC_LOG      = "#fdf8f0"
 BORDER_FILES = "#c7d4f8"
 BORDER_OUT   = "#bbe8cc"
 BORDER_LOG   = "#f2dfa8"
-
-BLUE        = "#3b82f6"
-BLUE_HOV    = "#2563eb"
-BLUE_LT     = "#dbeafe"
-GREEN       = "#16a34a"
-GREEN_LT    = "#dcfce7"
-GREEN_HDR   = "#15803d"
-AMBER       = "#d97706"
-AMBER_LT    = "#fef3c7"
-AMBER_HDR   = "#b45309"
-RED         = "#dc2626"
-RED_LT      = "#fee2e2"
-TEXT        = "#1e2235"
-SUBTEXT     = "#6b7280"
-LABEL_FILE  = "#1d4ed8"
-LABEL_OUT   = "#166534"
-LABEL_LOG   = "#92400e"
+BLUE         = "#3b82f6"
+BLUE_HOV     = "#2563eb"
+BLUE_LT      = "#dbeafe"
+BLUE_DROP    = "#bfdbfe"
+GREEN        = "#16a34a"
+GREEN_LT     = "#dcfce7"
+GREEN_HDR    = "#15803d"
+AMBER        = "#d97706"
+AMBER_LT     = "#fef3c7"
+AMBER_HDR    = "#b45309"
+RED          = "#dc2626"
+RED_LT       = "#fee2e2"
+TEXT         = "#1e2235"
+SUBTEXT      = "#6b7280"
+LABEL_FILE   = "#1d4ed8"
+LABEL_OUT    = "#166534"
 
 FONT_H    = ("Segoe UI Semibold", 15)
 FONT_SUB  = ("Segoe UI", 9)
@@ -53,10 +56,10 @@ FONT_SM   = ("Segoe UI", 9)
 FONT_BTN  = ("Segoe UI Semibold", 10)
 FONT_MONO = ("Consolas", 9)
 
-W, H = 540, 570
+W, H = 540, 590
 
 
-class App(tk.Tk):
+class App(TkinterDnD.Tk if HAS_DND else tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("PDF Compressor")
@@ -66,6 +69,8 @@ class App(tk.Tk):
         self.files: list[str] = []
         self.out_dir = tk.StringVar(value="")
         self._build()
+        if HAS_DND:
+            self._setup_dnd()
 
     def _center(self):
         self.update_idletasks()
@@ -78,8 +83,7 @@ class App(tk.Tk):
                         highlightbackground=border, highlightthickness=1)
 
     def _section_header(self, card, text, bg, fg):
-        hdr = tk.Frame(card, bg=fg, height=3)
-        hdr.pack(fill="x")
+        tk.Frame(card, bg=fg, height=3).pack(fill="x")
         tk.Label(card, text=text, font=FONT_SEC,
                  bg=bg, fg=fg, padx=10, pady=5).pack(anchor="w")
 
@@ -106,31 +110,47 @@ class App(tk.Tk):
         tk.Label(badge, text="UKVCAS  |  max 6 MB", font=("Segoe UI", 8),
                  bg=BLUE_LT, fg=LABEL_FILE, padx=8, pady=3).pack()
 
-        # ── PDF Files card ────────────────────────────────────────────────────
+        # ── Drop zone / file list ─────────────────────────────────────────────
         files_card = self._card(outer, SEC_FILES, BORDER_FILES)
         files_card.pack(fill="x", pady=(0, 10))
         self._section_header(files_card, "PDF FILES", SEC_FILES, LABEL_FILE)
 
-        list_frame = tk.Frame(files_card, bg=SEC_FILES)
-        list_frame.pack(fill="x", padx=10, pady=(0, 4))
+        # Drop zone frame (shown when list is empty)
+        self.drop_zone = tk.Frame(
+            files_card, bg=WHITE,
+            highlightbackground=BORDER_FILES, highlightthickness=2,
+            height=90,
+        )
+        self.drop_zone.pack(fill="x", padx=10, pady=(0, 4))
+        self.drop_zone.pack_propagate(False)
 
-        sb = tk.Scrollbar(list_frame, orient="vertical")
+        dz_inner = tk.Frame(self.drop_zone, bg=WHITE)
+        dz_inner.place(relx=0.5, rely=0.5, anchor="center")
+        self.drop_icon = tk.Label(dz_inner, text="[ + ]", font=("Segoe UI", 18),
+                                  bg=WHITE, fg=BORDER_FILES)
+        self.drop_icon.pack()
+        dnd_hint = "Drag & drop PDFs here" if HAS_DND else "Click '+ Add PDFs' below"
+        self.drop_label = tk.Label(dz_inner, text=dnd_hint,
+                                   font=FONT_SM, bg=WHITE, fg=SUBTEXT)
+        self.drop_label.pack()
+
+        # Listbox (shown once files are added, hidden when empty)
+        list_wrap = tk.Frame(files_card, bg=SEC_FILES)
+        list_wrap.pack(fill="x", padx=10, pady=(0, 4))
+        sb = tk.Scrollbar(list_wrap, orient="vertical")
         self.listbox = tk.Listbox(
-            list_frame, bg=WHITE, fg=TEXT,
+            list_wrap, bg=WHITE, fg=TEXT,
             selectbackground=BLUE_LT, selectforeground=BLUE,
             font=FONT_MONO, height=4,
-            relief="flat", borderwidth=0, highlightthickness=1,
-            highlightbackground=BORDER_FILES,
+            relief="flat", borderwidth=0,
+            highlightbackground=BORDER_FILES, highlightthickness=1,
             activestyle="none", yscrollcommand=sb.set,
         )
         sb.config(command=self.listbox.yview)
         self.listbox.pack(side="left", fill="x", expand=True)
         sb.pack(side="right", fill="y")
-
-        self.placeholder = tk.Label(
-            files_card, text="Click '+ Add PDFs' to get started",
-            font=FONT_SM, bg=SEC_FILES, fg=SUBTEXT)
-        self.placeholder.pack(pady=(2, 0))
+        list_wrap.pack_forget()   # hidden until files added
+        self.list_wrap = list_wrap
 
         btn_row = tk.Frame(files_card, bg=SEC_FILES)
         btn_row.pack(fill="x", padx=10, pady=(4, 10))
@@ -138,7 +158,7 @@ class App(tk.Tk):
         self._ghost_btn(btn_row, "Remove selected", self._remove, SUBTEXT,    SEC_FILES).pack(side="left")
         self._ghost_btn(btn_row, "Clear all",       self._clear,  SUBTEXT,    SEC_FILES).pack(side="right")
 
-        # ── Output folder card ────────────────────────────────────────────────
+        # ── Output folder ─────────────────────────────────────────────────────
         out_card = self._card(outer, SEC_OUT, BORDER_OUT)
         out_card.pack(fill="x", pady=(0, 10))
         self._section_header(out_card, "OUTPUT FOLDER", SEC_OUT, GREEN_HDR)
@@ -175,7 +195,7 @@ class App(tk.Tk):
                                         style="Blue.Horizontal.TProgressbar")
         self.progress.pack(fill="x", pady=(0, 10))
 
-        # ── Results card ──────────────────────────────────────────────────────
+        # ── Results ───────────────────────────────────────────────────────────
         log_card = self._card(outer, SEC_LOG, BORDER_LOG)
         log_card.pack(fill="both", expand=True)
         self._section_header(log_card, "RESULTS", SEC_LOG, AMBER_HDR)
@@ -183,7 +203,7 @@ class App(tk.Tk):
         self.log = tk.Text(
             log_card, bg=WHITE, fg=TEXT, font=FONT_MONO,
             relief="flat", borderwidth=0,
-            highlightbackground=BORDER_LOG, highlightthickness=0,
+            highlightthickness=0,
             state="disabled", wrap="word", height=5,
             padx=10, pady=8,
         )
@@ -195,6 +215,42 @@ class App(tk.Tk):
         self.log.tag_config("bold", font=("Consolas", 9, "bold"), foreground=TEXT)
 
         self._log("Ready. Add your PDFs above and hit Compress.", "dim")
+
+    # ── Drag and drop ─────────────────────────────────────────────────────────
+    def _setup_dnd(self):
+        self.drop_zone.drop_target_register(DND_FILES)
+        self.drop_zone.dnd_bind("<<DragEnter>>", self._drag_enter)
+        self.drop_zone.dnd_bind("<<DragLeave>>", self._drag_leave)
+        self.drop_zone.dnd_bind("<<Drop>>",      self._on_drop)
+        # Also allow dropping onto the listbox once files exist
+        self.listbox.drop_target_register(DND_FILES)
+        self.listbox.dnd_bind("<<Drop>>", self._on_drop)
+
+    def _drag_enter(self, event):
+        self.drop_zone.config(bg=BLUE_DROP, highlightbackground=BLUE)
+        self.drop_icon.config(bg=BLUE_DROP, fg=BLUE)
+        self.drop_label.config(bg=BLUE_DROP, fg=BLUE)
+        for w in self.drop_zone.winfo_children():
+            w.config(bg=BLUE_DROP)
+
+    def _drag_leave(self, event):
+        self.drop_zone.config(bg=WHITE, highlightbackground=BORDER_FILES)
+        self.drop_icon.config(bg=WHITE, fg=BORDER_FILES)
+        self.drop_label.config(bg=WHITE, fg=SUBTEXT)
+        for w in self.drop_zone.winfo_children():
+            w.config(bg=WHITE)
+
+    def _on_drop(self, event):
+        self._drag_leave(None)
+        # tkinterdnd2 returns paths wrapped in {} if they contain spaces
+        raw = event.data
+        paths = self.tk.splitlist(raw)
+        for p in paths:
+            p = p.strip()
+            if p.lower().endswith(".pdf") and p not in self.files:
+                self.files.append(p)
+                self.listbox.insert("end", "  " + Path(p).name)
+        self._sync_view()
 
     # ── Placeholder helpers ───────────────────────────────────────────────────
     def _set_placeholder(self):
@@ -219,6 +275,16 @@ class App(tk.Tk):
             return None
         return v.strip()
 
+    # ── View sync ────────────────────────────────────────────────────────────
+    def _sync_view(self):
+        if self.files:
+            self.drop_zone.pack_forget()
+            self.list_wrap.pack(fill="x", padx=10, pady=(0, 4),
+                                before=self.list_wrap.master.winfo_children()[2])
+        else:
+            self.list_wrap.pack_forget()
+            self.drop_zone.pack(fill="x", padx=10, pady=(0, 4))
+
     # ── Log ───────────────────────────────────────────────────────────────────
     def _log(self, msg, tag=""):
         self.log.config(state="normal")
@@ -226,13 +292,7 @@ class App(tk.Tk):
         self.log.see("end")
         self.log.config(state="disabled")
 
-    # ── File list helpers ─────────────────────────────────────────────────────
-    def _sync_placeholder(self):
-        if self.files:
-            self.placeholder.pack_forget()
-        else:
-            self.placeholder.pack(pady=(2, 0))
-
+    # ── File actions ──────────────────────────────────────────────────────────
     def _add(self):
         paths = filedialog.askopenfilenames(
             title="Select PDF files",
@@ -241,16 +301,16 @@ class App(tk.Tk):
             if p not in self.files:
                 self.files.append(p)
                 self.listbox.insert("end", "  " + Path(p).name)
-        self._sync_placeholder()
+        self._sync_view()
 
     def _remove(self):
         for i in reversed(self.listbox.curselection()):
             self.listbox.delete(i); self.files.pop(i)
-        self._sync_placeholder()
+        self._sync_view()
 
     def _clear(self):
         self.listbox.delete(0, "end"); self.files.clear()
-        self._sync_placeholder()
+        self._sync_view()
 
     def _browse_out(self):
         d = filedialog.askdirectory(title="Choose output folder")
@@ -263,7 +323,7 @@ class App(tk.Tk):
         if not self.files:
             self.log.config(state="normal"); self.log.delete("1.0","end")
             self.log.config(state="disabled")
-            self._log("No PDFs added yet. Click '+ Add PDFs' to begin.", "warn")
+            self._log("No PDFs added yet. Drag files in or click '+ Add PDFs'.", "warn")
             return
         self.run_btn.config(state="disabled", text="Compressing, please wait...")
         self.log.config(state="normal"); self.log.delete("1.0","end")

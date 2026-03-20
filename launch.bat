@@ -52,7 +52,7 @@ echo.
 echo  [SETUP] Installing/updating dependencies (pikepdf, Pillow)...
 echo          This may take a minute on first run.
 echo.
-pip install --quiet --upgrade pikepdf Pillow
+pip install --quiet --upgrade pikepdf Pillow tkinterdnd2
 if errorlevel 1 (
     echo  [ERROR] pip install failed. Check your internet connection.
     pause
