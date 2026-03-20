@@ -1,6 +1,7 @@
-1. download and extract the zip file
-2. double click on the launch.bat file
-3. wait for it to install python and requirements
-4. GUI should pop up
-5. drag n drop your files
-6. click blue button to start compressing
+1. install python from https://www.python.org/ftp/python/pymanager/python-manager-26.0.msix
+2. download and extract the zip file
+3. double click on the launch.bat file
+4. wait for it to install python and requirements
+5. GUI should pop up
+6. drag n drop your files
+7. click blue button to start compressing
