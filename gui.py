@@ -115,14 +115,17 @@ class App(TkinterDnD.Tk if HAS_DND else tk.Tk):
         files_card.pack(fill="x", pady=(0, 10))
         self._section_header(files_card, "PDF FILES", SEC_FILES, LABEL_FILE)
 
-        # Drop zone frame (shown when list is empty)
-        self.drop_zone = tk.Frame(
-            files_card, bg=WHITE,
-            highlightbackground=BORDER_FILES, highlightthickness=2,
-            height=90,
-        )
-        self.drop_zone.pack(fill="x", padx=10, pady=(0, 4))
-        self.drop_zone.pack_propagate(False)
+        # Container that holds BOTH drop zone and listbox — fixed height so
+        # swapping between them does not shift the layout below.
+        self.file_container = tk.Frame(files_card, bg=WHITE,
+                                       highlightbackground=BORDER_FILES,
+                                       highlightthickness=1, height=110)
+        self.file_container.pack(fill="x", padx=10, pady=(0, 4))
+        self.file_container.pack_propagate(False)
+
+        # Drop zone (overlay, visible when no files)
+        self.drop_zone = tk.Frame(self.file_container, bg=WHITE)
+        self.drop_zone.place(relx=0, rely=0, relwidth=1, relheight=1)
 
         dz_inner = tk.Frame(self.drop_zone, bg=WHITE)
         dz_inner.place(relx=0.5, rely=0.5, anchor="center")
@@ -134,23 +137,21 @@ class App(TkinterDnD.Tk if HAS_DND else tk.Tk):
                                    font=FONT_SM, bg=WHITE, fg=SUBTEXT)
         self.drop_label.pack()
 
-        # Listbox (shown once files are added, hidden when empty)
-        list_wrap = tk.Frame(files_card, bg=SEC_FILES)
-        list_wrap.pack(fill="x", padx=10, pady=(0, 4))
-        sb = tk.Scrollbar(list_wrap, orient="vertical")
+        # Listbox (overlay, visible when files present)
+        self.list_wrap = tk.Frame(self.file_container, bg=WHITE)
+        # NOT placed yet — shown in _sync_view
+        sb = tk.Scrollbar(self.list_wrap, orient="vertical")
         self.listbox = tk.Listbox(
-            list_wrap, bg=WHITE, fg=TEXT,
+            self.list_wrap, bg=WHITE, fg=TEXT,
             selectbackground=BLUE_LT, selectforeground=BLUE,
-            font=FONT_MONO, height=4,
+            font=FONT_MONO, height=5,
             relief="flat", borderwidth=0,
-            highlightbackground=BORDER_FILES, highlightthickness=1,
+            highlightthickness=0,
             activestyle="none", yscrollcommand=sb.set,
         )
         sb.config(command=self.listbox.yview)
-        self.listbox.pack(side="left", fill="x", expand=True)
+        self.listbox.pack(side="left", fill="both", expand=True)
         sb.pack(side="right", fill="y")
-        list_wrap.pack_forget()   # hidden until files added
-        self.list_wrap = list_wrap
 
         btn_row = tk.Frame(files_card, bg=SEC_FILES)
         btn_row.pack(fill="x", padx=10, pady=(4, 10))
@@ -278,12 +279,11 @@ class App(TkinterDnD.Tk if HAS_DND else tk.Tk):
     # ── View sync ────────────────────────────────────────────────────────────
     def _sync_view(self):
         if self.files:
-            self.drop_zone.pack_forget()
-            self.list_wrap.pack(fill="x", padx=10, pady=(0, 4),
-                                before=self.list_wrap.master.winfo_children()[2])
+            self.drop_zone.place_forget()
+            self.list_wrap.place(relx=0, rely=0, relwidth=1, relheight=1)
         else:
-            self.list_wrap.pack_forget()
-            self.drop_zone.pack(fill="x", padx=10, pady=(0, 4))
+            self.list_wrap.place_forget()
+            self.drop_zone.place(relx=0, rely=0, relwidth=1, relheight=1)
 
     # ── Log ───────────────────────────────────────────────────────────────────
     def _log(self, msg, tag=""):
